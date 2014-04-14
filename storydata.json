@@ -1,0 +1,70 @@
+{
+
+		"files": [
+
+		{"type":"svg", "name": "otsikko"},
+		{"type":"svg", "name": "heimlichalku"},
+		{"type":"svg", "name": "heimlichloppu"},
+		{"type":"svg", "name": "kiitos"},
+		{"type":"svg", "name": "alasin"},
+		{"type":"svg", "name": "loppu"},
+		{"type":"svg", "name": "tukehdus"},
+		{"type":"svg", "name": "toiminta"}
+		
+		],
+
+		"script": [
+
+				{
+				"entities": [{"name":"otsikko"}],
+				"enter": "left base",
+				"actions": [{"entity":"otsikko","action":"NEXT"}]
+				},
+
+				{
+				"entities": [{"name":"tukehdus"},
+								{"name":"toiminta"}, 
+								{"name":"loppu"}
+								], 
+				"exit": "right base",
+				"enter": "fadein",
+				"actions": [{"entity":"toiminta","action":"NEXT"}]
+				},
+
+				{
+				"entities": [{"name":"heimlichalku","w":"full","h":"full", "animation":"loop", "aspectRatio":false}],
+				"insert": 2,
+				"actions": [{"entity":"heimlichalku","action":"NEXT"}]
+				
+				},
+
+				{
+				"entities": [{"name":"heimlichloppu", "w":"full","h":"full",
+							  "animation":"once"}],
+				"replace": 2,
+				"exit": "fadeout",
+				"actions": [{"entity":"heimlichloppu","action":"NEXT"}]
+				},
+
+				{
+				"entities": [{"name":"kiitos"}],
+				"insert": 3,
+				"actions": [{"entity":"kiitos","action":"NEXT"}]
+				},
+
+				{
+				"entities": [{"name":"alasin","w":"full","h":"full"}],
+				"actions": [{"entity":"alasin","action":"NEXT"}]
+				
+				},
+				{
+				"entities": [{"name":"loppu"}],
+				"insert": 1,
+				"actions": [{"entity":"loppu","action":"START"}]
+				
+				}
+
+			
+		]
+
+}
