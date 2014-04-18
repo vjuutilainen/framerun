@@ -17,7 +17,8 @@
 
 				{
 				"entities": [{"name":"otsikko"}],
-				"enter": "left base",
+				"enter": "base top",
+				"exit": "base bottom",
 				"actions": [{"entity":"otsikko","action":"NEXT"}]
 				},
 
@@ -26,9 +27,9 @@
 								{"name":"toiminta"}, 
 								{"name":"loppu"}
 								], 
-				"exit": "right base",
-				"enter": "fadein",
-				"actions": [{"entity":"toiminta","action":"NEXT"}]
+				"actions": [{"entity":"toiminta","action":"NEXT"}],
+				"enterTransition": "fadein"
+
 				},
 
 				{
@@ -47,7 +48,7 @@
 				},
 
 				{
-				"entities": [{"name":"kiitos"}],
+				"entities": [{"name":"kiitos", "aspectRatio":false}],
 				"insert": 3,
 				"actions": [{"entity":"kiitos","action":"NEXT"}]
 				},
@@ -55,10 +56,11 @@
 				{
 				"entities": [{"name":"alasin","w":"full","h":"full"}],
 				"actions": [{"entity":"alasin","action":"NEXT"}]
+
 				
 				},
 				{
-				"entities": [{"name":"loppu"}],
+				"entities": [{"name":"loppu", "aspectRatio":false}],
 				"insert": 1,
 				"actions": [{"entity":"loppu","action":"START"}]
 				

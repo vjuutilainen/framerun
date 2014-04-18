@@ -1,6 +1,6 @@
 (function(exports){
 
-	// The constructor for main story object handling Scenes according to script and holding assets
+	// Story object constructor
 
 	var Story = function(storydata){
 
@@ -28,67 +28,68 @@
 			
 			this.scene = new Scene(this.storydata.script[this.sceneNum],this);
 			this.scene.draw();
-
+			
 		},
 
 		// Load story assets defined in the script
+
 		loadAssets: function(storydata,svg,callback){
 
-		var files = storydata.files;
-		var _this = this;
-		
-		if(storydata.files.length === 0){
-			callback();
-		};
-
-		var loadAsset = function(file,index,queueLength){
-
-			if(file.type === 'svg'){
-
-			d3.xml(file.name+'.svg', "image/svg+xml", function(xml) {
+			var files = storydata.files;
+			var _this = this;
 			
-				var importedNode = document.importNode(xml.documentElement, true);
-				_this.assets[file.name] = {};
-				_this.assets[file.name].properties = file;
-				_this.assets[file.name].src = importedNode;
-	 		
-	    		if(index === queueLength-1){
-	    			callback();
-	    		}
+			if(storydata.files.length === 0){
+				callback();
+			};
 
+			var loadAsset = function(file,index,queueLength){
+
+				if(file.type === 'svg'){
+
+					d3.xml(file.name+'.svg', "image/svg+xml", function(xml) {
+					
+						var importedNode = document.importNode(xml.documentElement, true);
+						_this.assets[file.name] = {};
+						_this.assets[file.name].properties = file;
+						_this.assets[file.name].src = importedNode;
+			 		
+			    		if(index === queueLength-1){
+			    			callback();
+			    		}
+
+					});
+				}
+
+			// TODO: Add support for other types
+
+			};
+
+			files.forEach(function(file,index){
+				loadAsset(file,index,files.length);
 			});
 		}
-
-		}
-
-		files.forEach(function(file,index){
-			loadAsset(file,index,files.length);
-		});
-		
-		}
-
 	}
 
-	// Scene object keeps data of entities in a given scene and has methods for arranging and drawing the scene
+	// Scene object constructor
 
 	var Scene = function(scene,story){
 
-		this.viewOffset = 0;
-		this.centerIndex = 1;
+		this.center = scene.centerIndex ? scene.centerIndex : "CENTER";
 		this.actions = scene.actions;
 		this.story = story;
 		this.entities = [];
-		this.transition = scene.transition ? scene.transition : "cut";
 		this.mode;
-
+		this.prevExit;
+		this.enter = scene.enter ? scene.enter : "base base";
+		this.exit = scene.exit ? scene.exit : "base base";
+		this.enterTransition = scene.enterTransition === 'fadein' ? scene.enterTransition : "cut";
+		this.exitTransition = scene.exitTransition === 'fadeout' ? scene.exitTransition : "cut";
+		this.transitionLength = 500;
 		var _this = this;
 
 		scene.entities.forEach(function(entity,index){
 			_this.entities.push(new Entity(entity, index, _this));
 		});
-
-		console.log("Built a scene");
-		console.log(this);
 
 	};
 
@@ -111,6 +112,9 @@
 
 		next: function(){
 
+			this.prevExit = this.exit;
+			this.prevWidth = this.getWidth();
+
 			this.story.sceneNum += 1;			
 			var newScene = this.story.storydata.script[this.story.sceneNum];
 			this.update(newScene);
@@ -121,12 +125,15 @@
 
 			var _this = this;
 
-			this.transition = newScene.transition ? newScene.transition : 'cut';
-
+			this.enter = newScene.enter ? newScene.enter : "base base";
+			this.exit = newScene.exit ? newScene.exit : "base base";
+			this.enterTransition = newScene.enterTransition === 'fadein' ? newScene.enterTransition : "cut";
+			this.exitTransition = newScene.exitTransition === 'fadeout' ? newScene.exitTransition : "cut";
 			this.actions = newScene.actions;
+			this.center = newScene.insert ? newScene.insert : newScene.replace ? newScene.replace : "CENTER";
 
 			if(typeof newScene.insert === 'undefined' && typeof newScene.replace === 'undefined'){
-
+				
 				this.mode = 'new';
 				this.entities = [];
 				
@@ -134,30 +141,19 @@
 					_this.entities.push(new Entity(entity, index, _this));
 				});
 
-				console.log("Cleared the scene");
-				console.log(this);
-
 			};
 
 			if(typeof newScene.insert === 'number'){
 
 				var target = newScene.insert;
-
-				this.transition = 'insert';
 				this.mode = 'insert';
-				this.centerIndex = newScene.insert;
-
+				
 				this.entities.forEach(function(entity){
 					entity.prev_i = entity.i;
 					entity.i = entity.i < target ? entity.i : entity.i + 1;
 				});
 
-				
-
 				this.entities.push(new Entity(newScene.entities[0], 0, this, target));
-
-				console.log("Inserted into a scene");
-				console.log(this);
 				
 			};
 
@@ -174,9 +170,6 @@
 				});
 
 				this.entities[replace_index] = new Entity(newScene.entities[0], 0, this, target);
-
-			console.log("Replaced in a scene");
-			console.log(this);
 				
 			};
 
@@ -195,22 +188,78 @@
 						return d.name;
 					});
 
-		console.log('handling present objects');
-			// Handle present objects
-			this.sceneObjects
+			var exitObjects = function(callback){
+
+				if(_this.sceneObjects.exit().node() === null){
+					console.log('No objects exiting');
+					callback();
+				}
+
+				else{
+
+					var objectCount = _this.sceneObjects.exit().length;
+					var objectsDone = 0;
+				
+				console.log(objectCount + ' objects exiting');
+				_this.sceneObjects.exit()
+					.attr("x",function(d){
+							return d.moving(_this,'exit').from.x;
+						})
+						.attr("y",function(d){
+							return d.moving(_this,'exit').from.y;
+						})
+						.attr('opacity',1)
+						.transition()
+						.duration(_this.transitionLength)
+						.attr('opacity',function(){
+							return _this.exitTransition === 'fadeout' ? 0 : 1;
+						})
+						.attr("x",function(d){
+							return d.moving(_this,'exit').to.x;
+						})
+						.attr("y",function(d){
+							return d.moving(_this,'exit').to.y;
+						})
+						.each('end',function(d,i){
+
+							this.remove();
+							objectsDone += 1;
+							if(objectCount === objectsDone){
+								callback();
+							}
+						});
+					}
+					};
+
+		
+			var updateObjects = function(callback){
+
+				if(_this.sceneObjects.node() === null){
+					console.log('No objects to update');
+					callback();
+				}
+
+				else{
+
+					var objectCount = _this.sceneObjects.length;
+					var objectsDone = 0;
+
+					console.log('Updating ' + objectCount +' objects');
+
+			_this.sceneObjects
 				.attr("x",function(d){
-						return d.moving(_this).from.x;
+						return d.moving(_this,'update').from.x;
 					})
 					.attr("y",function(d){
-						return d.moving(_this).from.y;
+						return d.moving(_this,'update').from.y;
 					})
 					.transition()
-					.duration(1000)
+					.duration(_this.transitionLength)
 					.attr("x",function(d){
-						return d.moving(_this).to.x;
+						return d.moving(_this,'update').to.x;
 					})
 					.attr("y",function(d){
-						return d.moving(_this).to.y;
+						return d.moving(_this,'update').to.y;
 					})
 					.each(function(d,i){
 						var thisObj = d3.select(this);
@@ -226,11 +275,31 @@
 						});
 						}
 
+						objectsDone += 1;
+							if(objectCount === objectsDone){
+								callback();
+							}
+
 					});
 
-		console.log('handling new objects');
-			// Handle new objects
-			this.sceneObjects				
+				}
+				};
+
+		
+			var enterObjects = function(callback){
+
+				if(_this.sceneObjects.enter().node() === null){
+					console.log('No objects entering');
+					callback();
+				}
+
+				else{
+
+					var objectCount = _this.sceneObjects.enter().length;
+					var objectsDone = 0;
+
+					console.log('Entering ' + objectCount +' objects');
+			_this.sceneObjects				
 					.enter()
 					.append('svg')
 					.attr('class','frame')
@@ -238,17 +307,23 @@
 						return d.name;
 					})
 					.attr("x",function(d){
-						return d.moving(_this).from.x;
+						return d.moving(_this,'enter').from.x;
 					})
 					.attr("y",function(d){
-						return d.moving(_this).from.y;
+						return d.moving(_this,'enter').from.y;
 					})
+					.attr('opacity', function(){
+						return _this.enterTransition === 'fadein' ? 0 : 1;
+					})
+
 					.transition()
+					.duration(_this.transitionLength)
+					.attr('opacity','1')
 					.attr("x",function(d){
-						return d.moving(_this).to.x;
+						return d.moving(_this,'enter').to.x;
 					})
 					.attr("y",function(d){
-						return d.moving(_this).to.y;
+						return d.moving(_this,'enter').to.y;
 					})
 					.each(function(d,i){
 
@@ -267,26 +342,50 @@
 						});
 						}
 						
-				
+						objectsDone += 1;
+							if(objectCount === objectsDone){
+								callback();
+							}
+
 					});
+				}
+
+			}
 
 
-		console.log('removing objects');
-			// Handle removable objects
-			this.sceneObjects.exit().remove();
+			exitObjects(function(){
+				updateObjects(function(){
+					enterObjects(function(){
+						_this.centerView();
+						_this.ready();
+					});
+				});
+			});
 
-			if(this.mode === 'insert' || this.mode === 'replace'){
+		},
 
-				var insertOffset = this.getOffset(this.sceneObjects.filter(function(d){return d.i === _this.centerIndex}).datum());
-				var insertWidthOffset = (this.sceneObjects.filter(function(d){return d.i === _this.centerIndex}).datum().w/2);
+		centerView: function(){
 
-				this.viewOffset = -insertOffset + this.story.width/2 - insertWidthOffset;
-				d3.select('#view').transition().duration(1000).attr('transform','translate('+this.viewOffset+',0)');
+			console.log('Centering the view');
+
+			var _this = this;
+			var currentViewCenter;
+
+			if(typeof this.center === "number"){
+				var centerFrame = _this.sceneObjects.filter(function(d){return d.i === _this.center}).datum();
+				currentViewCenter= -this.getOffset(centerFrame) + this.story.width/2 - centerFrame.w/2; 
+				console.log("Centering by index " + this.center);
 			}
 			else{
-				this.viewOffset = (this.story.width/2)-(this.getWidth()/2);
-				d3.select('#view').attr('transform','translate('+this.viewOffset+',0)');
+				currentViewCenter = (this.story.width/2)-(this.getWidth()/2);
+				console.log("Centering by content width of " + this.getWidth());
 			}
+			if(this.mode === 'insert' || this.mode === 'replace'){
+				d3.select('#view').transition().attr('transform','translate('+currentViewCenter+',0)');
+			}
+			else{
+				d3.select('#view').attr('transform','translate('+currentViewCenter+',0)');
+			}		
 
 		},
 
@@ -297,7 +396,6 @@
 				return current.i < frame.i ? prev + parseFloat(current.w) : prev + 0;
 			},0);
 
-			//console.log(offset + " " + "frame " + frame.name);
 			return offset;
 		},
 
@@ -306,7 +404,7 @@
 			var width = this.entities.reduce(function(prev,current){
 				return prev + parseFloat(current.w);
 			},0);
-			//console.log("scenewidth " + width);
+		
 			return width;
 
 		},
@@ -365,9 +463,9 @@
 						
 		},
 
-		actionDone: function(entity){
+		ready: function(){
 
-			this.story[entity.after]();
+			console.log('transitions ready');
 			
 		},
 
@@ -412,8 +510,11 @@
 		this.name = entity.name;
 		this.type = scene.story.assets[entity.name].properties.type;
 
-		this.w = typeof entity.w === 'number' ? entity.w : entity.w === 'full' ? scene.story.height : parseInt(this.file.getAttribute('width'));
-		this.h = typeof entity.h === 'number' ? entity.h : entity.h === 'full' ? scene.story.height : parseInt(this.file.getAttribute('height'));
+		this.enter = entity.enter ? entity.enter : false; 
+		this.exit = entity.exit ? entity.exit : false;
+
+		this.w = typeof entity.w === 'number' ? entity.w : entity.w === 'full' ? scene.story.height : parseFloat(this.file.getAttribute('width'));
+		this.h = typeof entity.h === 'number' ? entity.h : entity.h === 'full' ? scene.story.height : parseFloat(this.file.getAttribute('height'));
 
 		this.tw = typeof entity.tw === "number" ? entity.tw : this.w;
 		this.th = typeof entity.th === "number" ? entity.th : this.h;
@@ -441,21 +542,6 @@
 			this.h = 400;
 
 		}
-
-			// For entity-specific movement, TODO
-			// if(prop.move){
-			// if(prop.move.from){
-			// 	this.move.from = { x: prop.move.from.split(' ')[0] ? prop.move.from.split(' ')[0] : 'left',
-			// 				  y: prop.move.from.split(' ')[1] ? prop.move.from.split(' ')[1] : 'base'
-			// 				};
-			// }
-
-			// if(prop.move.to){
-			// 	this.move.to = { x: prop.move.to.split(' ')[0] ? prop.move.to.split(' ')[0] : 'base',
-			// 				y: prop.move.to.split(' ')[1] ? prop.move.to.split(' ')[1] : 'base',
-			// 			  };
-			// }
-			// }
 		
 	};
 
@@ -509,25 +595,28 @@
 
 		resize: function(){
 
+			var _this = this;
+
 			d3.select('#'+this.name).select('svg')
 						.attr('width',0)
 						.transition()
-						.duration(1000)
+						.duration(_this.scene.transitionLength)
 						.attr('width',this.w);
 
 			d3.select('#'+this.name)
 						.attr('width',0)
 						.transition()
-						.duration(1000)
+						.duration(_this.scene.transitionLength)
 						.attr('width',this.w);
 						
 
 		},
 
-		moving: function(scene){
+		// Returns movement object for entity entering or exiting 
+
+		moving: function(scene,group){
 
 			var basex = scene.getOffset(this);
-
 			var basey = (scene.story.height/2)-this.h/2;
 
 			var moves = { from: {}, to: {} };
@@ -535,53 +624,80 @@
 			var x = d3.select("#"+this.name).attr("x");
 			var y = d3.select("#"+this.name).attr("y");
 
-			// Scenewide transitions
-			if(scene.transition){
-				if(scene.transition === "cut"){
-					moves.from.x = basex; 
-					moves.from.y = basey;
-					moves.to.x = basex; 
-					moves.to.y = basey;
-				}
+			// Calculate moves for new elements
 
-				if(scene.transition === "insert"){
+			if(group === 'enter'){
+
+				// First define scenewide enter and exit movement
+
+				var enter_x = scene.enter.split(' ')[0]; 
+				var enter_y = scene.enter.split(' ')[1];
+
+				// Then check framewide enter and exit definitions
+
+				enter_x = this.enter !== false ? this.enter.split(' ')[0] : enter_x; 
+				enter_y = this.enter !== false ? this.enter.split(' ')[1] : enter_y; 
+
+				// transform definitions into coordinates
+
+				moves.from.x = enter_x === 'left' ? 0-this.w : enter_x === 'right' ? scene.story.width : enter_x === 'base' ? basex : parseFloat(enter_x);
+				moves.from.y = enter_y === 'top' ? 0-this.h : enter_y === 'bottom' ? scene.story.height : enter_y === 'base' ? basey : parseFloat(enter_y);
+
+				moves.to.x = basex;
+				moves.to.y = basey;
+				
+			}
+
+			// Calculate moves for exiting elements
+
+			if(group === 'exit'){
+				
+				var exit_x = scene.prevExit.split(' ')[0]; 
+				var exit_y = scene.prevExit.split(' ')[1];
+
+				exit_x = this.exit !== false ? this.exit.split(' ')[0] : exit_x; 
+				exit_y = this.exit !== false ? this.exit.split(' ')[1] : exit_y;
+
+				moves.from.x = x;
+				moves.from.y = y;
+
+				moves.to.x = exit_x === 'left' ? 0-this.w : exit_x === 'right' ? scene.story.width : exit_x === 'base' ? x : parseFloat(exit_x);
+				moves.to.y = exit_y === 'top' ? 0-this.h : exit_y === 'bottom' ? scene.story.height : exit_y === 'base' ? y : parseFloat(exit_y);
+
+
+			}
+
+			// Calculate moves for present elements
+
+			if(group === 'update'){
+
+				if(scene.mode === 'insert'){
 
 					moves.from.x = x !== null ? x : basex;
 					moves.from.y = y !== null ? y : basey;
 					moves.to.x = basex; 
 					moves.to.y = basey;
 
+
+
 				}
 
-				if(scene.transition === "default"){
-					moves.from.x = 0;
-					moves.from.y = 0;
+				else{
+
+					moves.from.x = basex; 
+					moves.from.y = basey;
 					moves.to.x = basex; 
 					moves.to.y = basey;
+				
+
 				}
 
-			}
 
-			// Entity-specific transitions
-
-			if(this.move){
-
-				moves.from.x === 'left' ? 0-this.w : this.move.from.x === 'right' ? scene.story.width : this.move.from.x === 'base' ? basex : this.move.from.x;
-				moves.from.y = this.move.from.y === 'top' ? 0-this.h : this.move.from.y === 'bottom' ? scene.story.height : this.move.from.y === 'base' ? basey : this.move.from.y;
-
-				moves.to.x = this.move.to.x === 'left' ? 0-this.w : this.move.to.x === 'right' ? scene.story.width : this.move.to.x === 'base' ? basex : this.move.to.x;
-				moves.to.y = this.move.to.y === 'top' ? 0-this.h : this.move.to.y === 'bottom' ? scene.story.height : this.move.to.y === 'base' ? basey : this.move.to.y;
 
 			}
 			
 			return moves;
 	
-		},
-
-		reset: function(){
-
-			this.obj.attr('x','0').attr('y','0').attr('width','0').attr('height','0');
-
 		},
 
 		animate: function(mode){
